@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  REVIEW
+  CONFIRMED
+  PRODUCING
+  SHIPPED
+  DONE
+  CANCELLED
+}
+
+model User {
+  id             String          @id @default(cuid())
+  firebaseUid    String          @unique
+  email          String?
+  name           String?
+  image          String?
+  cart           Cart?
+  cartItems      CartItem[]
+  transactions   Transaction[]
+  ringOrders     RingOrder[]
+  necklaceOrders NecklaceOrder[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model Product {
+  id               String             @id @default(cuid())
+  name             String
+  price            Int
+  image            String?
+  detail           String             @default("detail belum ditambahkan")
+  size             String?
+  weight           Int                @default(100)
+  stock            Int                @default(1)
+  isActive         Boolean            @default(true)
+  categoryId       String?
+  category         Category?          @relation(fields: [categoryId], references: [id])
+  cartItems        CartItem[]
+  transactionItems TransactionItem[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model Category {
+  id       String    @id @default(cuid())
+  name     String
+  products Product[]
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  @@unique([userId, productId])
+}
+
+model Cart {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courierName  String?
+  serviceName  String?
+  shippingCost Int?
+  etd          String?
+  isCod        Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
+}
+
+model Transaction {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items           TransactionItem[]
+  recipientName   String
+  recipientPhone  String
+  address         String
+  subdistrictId   Int
+  subdistrictName String
+  courierName     String
+  serviceName     String
+  shippingCost    Int
+  etd             String
+  isCod           Boolean
+  courierCode     String?
+  trackingNumber  String?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  totalAmount     Int
+  status          String           @default("paid")
+  createdAt       DateTime         @default(now())
+  @@index([createdAt])
+  @@index([status])
+}
+
+model TransactionItem {
+  id            String       @id @default(cuid())
+  transactionId String
+  productId     String
+  transaction   Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  product       Product      @relation(fields: [productId], references: [id])
+  quantity      Int          @default(1)
+  price         Int
+}
+
+model RingOrder {
+  id           String       @id @default(cuid())
+  userId       String?
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName String       @db.VarChar(100)
+  phone        String       @db.VarChar(30)
+  address      String
+  ringSize     Int
+  engraveText  String?      @db.VarChar(40)
+  quantity     Int          @default(1)
+  notes        String?
+  status       OrderStatus  @default(PENDING)
+  images       OrderImage[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  @@index([createdAt])
+  @@index([status])
+}
+
+model NecklaceOrder {
+  id           String       @id @default(cuid())
+  userId       String?
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName String       @db.VarChar(100)
+  phone        String       @db.VarChar(30)
+  address      String
+  nameText     String       @db.VarChar(20)
+  chainLength  Int
+  fontStyle    String?      @db.VarChar(50)
+  quantity     Int          @default(1)
+  notes        String?
+  status       OrderStatus  @default(PENDING)
+  images       OrderImage[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  @@index([createdAt])
+  @@index([status])
+}
+
+model OrderImage {
+  id              String         @id @default(cuid())
+  url             String
+  filename        String?        @db.VarChar(200)
+  mimeType        String?        @db.VarChar(100)
+  ringOrderId     String?
+  ringOrder       RingOrder?     @relation(fields: [ringOrderId], references: [id], onDelete: Cascade)
+  necklaceOrderId String?
+  necklaceOrder   NecklaceOrder? @relation(fields: [necklaceOrderId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+  @@index([ringOrderId])
+  @@index([necklaceOrderId])
+}
