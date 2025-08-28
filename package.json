@@ -2,12 +2,18 @@
   "name": "lumi",
   "version": "0.1.0",
   "private": true,
+
+  "packageManager": "pnpm@10.12.4",
+  "engines": { "node": "20.x" },
+
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "prisma generate"
   },
+
   "dependencies": {
     "@auth/prisma-adapter": "^2.9.0",
     "@prisma/client": "^6.6.0",
@@ -37,6 +43,7 @@
     "tailwind-merge": "^3.2.0",
     "uuid": "^11.1.0"
   },
+
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
@@ -51,10 +58,13 @@
     "tw-animate-css": "^1.2.8",
     "typescript": "^5"
   },
+
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@firebase/util",
-      "protobufjs",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
       "sharp"
     ],
     "ignoredBuiltDependencies": [
