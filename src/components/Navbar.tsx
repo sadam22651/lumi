@@ -7,7 +7,6 @@ import { signOut } from 'firebase/auth'
 import axios from 'axios'
 import {
   ShoppingCartIcon,
-  HistoryIcon,
   TruckIcon,
   MenuIcon,
   LogOutIcon,
@@ -210,16 +209,11 @@ export default function Navbar() {
 
                   <Separator className="my-3" />
 
-                  {/* Quick actions */}
-                  <div className="grid grid-cols-3 gap-2">
+                  {/* Quick actions (mobile, tanpa History) */}
+                  <div className="grid grid-cols-2 gap-2">
                     <Link href="/order" onClick={() => setOpen(false)} aria-label="Orders">
                       <Button variant="outline" className="w-full">
                         <TruckIcon className="h-4 w-4" />
-                      </Button>
-                    </Link>
-                    <Link href="/history" onClick={() => setOpen(false)} aria-label="History">
-                      <Button variant="outline" className="w-full">
-                        <HistoryIcon className="h-4 w-4" />
                       </Button>
                     </Link>
                     <Link href="/cart" onClick={() => setOpen(false)} aria-label="Keranjang">
@@ -314,18 +308,12 @@ export default function Navbar() {
             {isAdmin && <ActiveLink href="/dashboard">Dashboard</ActiveLink>}
           </div>
 
-          {/* Right actions */}
+          {/* Right actions (tanpa History) */}
           <div className="ml-auto flex items-center gap-2">
             <div className="hidden items-center gap-2 sm:flex">
               <Link href="/order" aria-label="Orders">
                 <Button variant="outline" size="icon">
                   <TruckIcon className="h-5 w-5" />
-                </Button>
-              </Link>
-
-              <Link href="/history" aria-label="History">
-                <Button variant="outline" size="icon">
-                  <HistoryIcon className="h-5 w-5" />
                 </Button>
               </Link>
 
@@ -363,9 +351,6 @@ export default function Navbar() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link href="/order">Orders</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/history">Riwayat</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href="/cart">Keranjang</Link>
