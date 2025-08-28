@@ -198,7 +198,7 @@ export default function OrderDetailPage() {
       setTracking(true)
       const token = await user?.getIdToken()
       const res = await axios.post(
-        `/api/orders/${id}/track`,
+        `/api/dashboard/orders/${id}/track`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       )

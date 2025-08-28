@@ -203,7 +203,7 @@ export default function CheckoutPage() {
               { headers: { Authorization: `Bearer ${token}` } }
             )
             toast.success('Pembayaran & transaksi berhasil!')
-            router.push('/transactions/history')
+            router.push('/')
           } catch (err) {
             console.error('Gagal simpan transaksi:', err)
             toast.error('Pembayaran berhasil, tapi gagal simpan transaksi.')

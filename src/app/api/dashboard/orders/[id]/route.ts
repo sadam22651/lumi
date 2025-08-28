@@ -58,7 +58,7 @@ const txSelect = {
   // tracking
   courierCode: true,
   trackingNumber: true,
-  status: true,           // 'paid' | 'processing' | 'shipped' | 'done' | 'cancelled'
+  status: true, // 'paid' | 'processing' | 'shipped' | 'done' | 'cancelled'
   shippedAt: true,
   deliveredAt: true,
 
@@ -73,12 +73,18 @@ const txSelect = {
   },
 } as const
 
-/** =========================
- *  GET: Detail transaksi (ADMIN)
- *  ========================= */
+// ===== util: tipe status & validator =====
+const allowed = ['paid', 'processing', 'shipped', 'done', 'cancelled'] as const
+type TxStatus = typeof allowed[number]
+const isTxStatus = (v: unknown): v is TxStatus =>
+  typeof v === 'string' && (allowed as readonly string[]).includes(v)
+
+// =========================
+// GET: Detail transaksi (ADMIN)
+// =========================
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }, // ⬅️ BUKAN Promise
+  { params }: { params: Promise<{ id: string }> } // params adalah Promise di Next 15
 ) {
   try {
     const guard = await requireAdmin(req)
@@ -97,36 +103,40 @@ export async function GET(
     }
 
     return NextResponse.json({ transaction: tx })
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[ADMIN TRANSACTION GET ERROR]', err)
     return NextResponse.json({ error: 'Gagal ambil detail transaksi' }, { status: 500 })
   }
 }
 
-/** =========================
- *  PATCH: Update status transaksi (ADMIN)
- *  ========================= */
+// =========================
+// PATCH: Update status transaksi (ADMIN)
+// =========================
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }, // ⬅️ BUKAN Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const guard = await requireAdmin(req)
     if ('error' in guard) return guard.error
 
-    const { id } = params
+    const { id } = await params
     if (!id) return NextResponse.json({ error: 'ID kosong' }, { status: 400 })
 
-    const body = await req.json().catch(() => ({}))
-    const newStatus = String(body?.newStatus || '')
+    const raw = (await req.json().catch(() => null)) as unknown
+    const newStatusInput = raw && typeof raw === 'object'
+      ? (raw as Record<string, unknown>).newStatus
+      : undefined
 
-    const allowed = ['paid', 'processing', 'shipped', 'done', 'cancelled'] as const
-    if (!allowed.includes(newStatus as any)) {
+    if (!isTxStatus(newStatusInput)) {
       return NextResponse.json({ error: 'Status tidak valid' }, { status: 400 })
     }
+    const newStatus: TxStatus = newStatusInput
 
-    // efek samping opsional saat ganti status
-    const data: any = { status: newStatus }
+    // object data bertipe jelas (tanpa any)
+    const data: { status: TxStatus; shippedAt?: Date; deliveredAt?: Date } = {
+      status: newStatus,
+    }
     const now = new Date()
     if (newStatus === 'shipped') data.shippedAt = data.shippedAt ?? now
     if (newStatus === 'done') data.deliveredAt = data.deliveredAt ?? now
@@ -138,7 +148,7 @@ export async function PATCH(
     })
 
     return NextResponse.json({ success: true, updated })
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[ADMIN TRANSACTION PATCH ERROR]', err)
     return NextResponse.json({ error: 'Gagal update status' }, { status: 500 })
   }

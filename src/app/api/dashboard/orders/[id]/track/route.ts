@@ -10,7 +10,7 @@ const KOMERCE_URL = 'https://rajaongkir.komerce.id/api/v1/track/waybill'
 const PROVIDER_TIMEOUT_MS = 15000
 
 function isEmailAdmin(email?: string | null) {
-  const adminEnv = process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? ''
+  const adminEnv = process.env.NEXT_PUBLIC_ADMIN_EMAIL??''
   const list = adminEnv.split(',').map(s => s.trim()).filter(Boolean)
   return !!email && list.includes(email)
 }
