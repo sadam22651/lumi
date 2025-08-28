@@ -162,19 +162,7 @@ export default function CheckoutPage() {
       const user = auth.currentUser
       const token = await user?.getIdToken()
 
-      // (opsional) simpan ringkas ke Cart
-      await axios.patch(
-        '/api/cart/shipping',
-        {
-          courier_name: selectedShipping.shipping_name,
-          service_name: selectedShipping.service_name,
-          shipping_cost: selectedShipping.shipping_cost_net,
-          etd: selectedShipping.etd,
-          is_cod: selectedShipping.is_cod,
-          courier_code: courierCode, // opsional aja
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
+      // 🚫 Dihapus: PATCH ke /api/cart/shipping
 
       // Ambil token Midtrans
       const { data } = await axios.post('/api/tokenizer', {
