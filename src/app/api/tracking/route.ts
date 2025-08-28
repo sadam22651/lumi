@@ -15,9 +15,7 @@ export async function POST(req: NextRequest) {
 
     if (!waybill || !courier) {
       return NextResponse.json(
-        {
-          meta: { message: 'waybill & courier wajib diisi', code: 400, status: 'error' },
-        },
+        { meta: { message: 'waybill & courier wajib diisi', code: 400, status: 'error' } },
         { status: 400 }
       )
     }
@@ -25,9 +23,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.RAJAONGKIR_COST_KEY || ''
     if (!apiKey) {
       return NextResponse.json(
-        {
-          meta: { message: 'RAJAONGKIR_COST_KEY tidak ditemukan di env', code: 500, status: 'error' },
-        },
+        { meta: { message: 'RAJAONGKIR_COST_KEY tidak ditemukan di env', code: 500, status: 'error' } },
         { status: 500 }
       )
     }
@@ -36,27 +32,33 @@ export async function POST(req: NextRequest) {
     const controller = new AbortController()
     const t = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS)
 
-    const res = await fetch(KOMERCE_URL, {
-      method: 'POST',
-      headers: {
-        accept: 'application/json',
-        key: apiKey,
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        awb: String(waybill).trim(),
-        courier: String(courier).trim().toLowerCase(),
-        // opsional, sesuai contoh doc:
-        // last_phone_number: 'null',
-      }),
-      cache: 'no-store',
-      signal: controller.signal,
-    }).catch((e) => {
-      if ((e as any)?.name === 'AbortError') {
-        return new Response(null, { status: 504, statusText: 'Timeout' })
+    let res: Response
+    try {
+      res = await fetch(KOMERCE_URL, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          key: apiKey,
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          awb: String(waybill).trim(),
+          courier: String(courier).trim().toLowerCase(),
+        }),
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+    } catch (e: unknown) {
+      clearTimeout(t)
+      const isAbort = typeof e === 'object' && e !== null && 'name' in e && (e as { name?: unknown }).name === 'AbortError'
+      if (isAbort) {
+        return NextResponse.json(
+          { meta: { message: 'Timeout ke provider', code: 504, status: 'error' } },
+          { status: 504 }
+        )
       }
       throw e
-    })
+    }
     clearTimeout(t)
 
     if (!res) {
@@ -71,10 +73,7 @@ export async function POST(req: NextRequest) {
       const snippet = await res.text().catch(() => '')
       const reason = res.status === 404 ? 'Resi tidak ditemukan' : 'Respons bukan JSON dari provider'
       return NextResponse.json(
-        {
-          meta: { message: reason, code: res.status, status: 'error' },
-          snippet: snippet.slice(0, 200),
-        },
+        { meta: { message: reason, code: res.status, status: 'error' }, snippet: snippet.slice(0, 200) },
         { status: 502 }
       )
     }
@@ -105,8 +104,9 @@ export async function POST(req: NextRequest) {
 
     // ✅ sukses — kembalikan persis (meta, data)
     return NextResponse.json(body, { status: 200 })
-  } catch (err: any) {
-    if (err?.name === 'AbortError') {
+  } catch (err: unknown) {
+    const isAbort = typeof err === 'object' && err !== null && 'name' in err && (err as { name?: unknown }).name === 'AbortError'
+    if (isAbort) {
       return NextResponse.json(
         { meta: { message: 'Timeout ke provider', code: 504, status: 'error' } },
         { status: 504 }

@@ -1,11 +1,27 @@
 // src/app/api/transactions/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { adminAuth } from '@/lib/firebase-admin'
-import { prisma } from '@/lib/prisma' // prisma singleton
+import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
 type ItemInput = { productId: string; quantity: number }
+
+type RequestBody = {
+  items: ItemInput[]
+  courierName: string
+  serviceName: string
+  shippingCost: number
+  etd: string
+  isCod: boolean
+  totalAmount: number
+  courierCode?: string
+  recipientName: string
+  recipientPhone: string
+  address: string
+  subdistrictId: number
+  subdistrictName: string
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,54 +46,50 @@ export async function POST(req: NextRequest) {
     }
 
     // ===== 2) Body =====
-    const body = await req.json().catch(() => null)
-    if (!body) {
+    let raw: unknown
+    try {
+      raw = await req.json()
+    } catch {
+      raw = null
+    }
+    if (!raw || typeof raw !== 'object') {
       return NextResponse.json({ error: 'Body tidak valid' }, { status: 400 })
     }
 
     const {
-      items,                   // [{ productId, quantity }]
+      items,
       courierName,
       serviceName,
       shippingCost,
       etd,
       isCod,
       totalAmount,
-
-      // penting untuk tracking (disimpan ke DB)
-      courierCode,             // HARUS dikirim dari FE (kode kurir yang valid)
-
-      // alamat & penerima
+      courierCode,
       recipientName,
       recipientPhone,
       address,
       subdistrictId,
       subdistrictName,
-    } = body as {
-      items: ItemInput[]
-      courierName: string
-      serviceName: string
-      shippingCost: number
-      etd: string
-      isCod: boolean
-      totalAmount: number
-      courierCode?: string
-      recipientName: string
-      recipientPhone: string
-      address: string
-      subdistrictId: number
-      subdistrictName: string
-    }
+    } = raw as Partial<RequestBody>
 
     // ===== 3) Validasi sederhana =====
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: 'Data item kosong' }, { status: 400 })
     }
-    if (!recipientName || !recipientPhone || !address || !subdistrictId || !subdistrictName) {
+    if (
+      !recipientName ||
+      !recipientPhone ||
+      !address ||
+      typeof subdistrictId !== 'number' ||
+      !subdistrictName
+    ) {
       return NextResponse.json({ error: 'Data alamat tidak lengkap' }, { status: 400 })
     }
     if (!courierName || !serviceName || typeof shippingCost !== 'number') {
       return NextResponse.json({ error: 'Data pengiriman tidak lengkap' }, { status: 400 })
+    }
+    if (typeof totalAmount !== 'number') {
+      return NextResponse.json({ error: 'totalAmount tidak valid' }, { status: 400 })
     }
     if (!courierCode) {
       return NextResponse.json({ error: 'courierCode tidak ada. Pastikan FE mengirimkannya.' }, { status: 400 })
@@ -86,20 +98,20 @@ export async function POST(req: NextRequest) {
     // ===== 4) Transaksi DB (atomic) =====
     const result = await prisma.$transaction(async (tx) => {
       // 4a. Ambil produk yang diperlukan
-      const productIds = [...new Set(items.map(i => i.productId))]
+      const productIds = [...new Set(items.map((i) => i.productId))]
       const products = await tx.product.findMany({
         where: { id: { in: productIds } },
         select: { id: true, name: true, price: true, stock: true },
       })
 
-      const map = new Map(products.map(p => [p.id, p]))
+      const map = new Map(products.map((p) => [p.id, p]))
 
       // 4b. Validasi stok + bentuk payload items transaksi
-      const itemsToCreate = items.map((i) => {
-        const p = map.get(i.productId)
-        if (!p) throw new Error(`Produk dengan ID ${i.productId} tidak ditemukan`)
-        if (p.stock < i.quantity) throw new Error(`Stok produk ${p.name} tidak mencukupi`)
-        return { productId: i.productId, quantity: i.quantity, price: p.price } // snapshot harga saat checkout
+      const itemsToCreate = items.map(({ productId, quantity }) => {
+        const p = map.get(productId)
+        if (!p) throw new Error(`Produk dengan ID ${productId} tidak ditemukan`)
+        if (p.stock < quantity) throw new Error(`Stok produk ${p.name} tidak mencukupi`)
+        return { productId, quantity, price: p.price } // snapshot harga saat checkout
       })
 
       // 4c. Buat transaksi utama
@@ -111,12 +123,12 @@ export async function POST(req: NextRequest) {
           courierName,
           serviceName,
           shippingCost,
-          etd,
-          isCod,
+          etd: String(etd ?? ''),
+          isCod: Boolean(isCod),
           totalAmount,
 
           // tracking
-          courierCode,            // disimpan untuk proses tracking selanjutnya
+          courierCode, // disimpan untuk proses tracking selanjutnya
           // trackingNumber: null, // (opsional) diisi admin ketika barang dikirim
 
           // alamat
@@ -145,28 +157,13 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      // 4e. Kosongkan keranjang user (sesuai schema kamu: CartItem punya userId)
+      // 4e. Kosongkan keranjang user
       await tx.cartItem.deleteMany({
         where: { userId: user.id },
       })
 
-      // (Opsional) Kalau kamu ingin reset info ongkir yang tersimpan di Cart,
-      // pastikan field-nya ada di schema Cart kamu, lalu un-comment & sesuaikan:
-      //
-      // await tx.cart.update({
-      //   where: { userId: user.id },
-      //   data: {
-      //     // contoh field — ganti sesuai schema Cart kamu
-      //     // courier: null,
-      //     // courierCode: null,
-      //     // service: null,
-      //     // etd: null,
-      //     // cost: 0,
-      //     // weight: 0,
-      //     // originCityId: null,
-      //     // destinationSubdistrictId: null,
-      //   },
-      // }).catch(() => null)
+      // (Opsional) Reset info ongkir di Cart jika field-nya ada pada schema Cart
+      // await tx.cart.update({ where: { userId: user.id }, data: { ... } }).catch(() => null)
 
       return trx
     })
@@ -175,13 +172,17 @@ export async function POST(req: NextRequest) {
       status: 201,
       headers: { 'Cache-Control': 'no-store' },
     })
-  } catch (err: any) {
-    // Error yang dilempar dari dalam $transaction (throw new Error(...))
-    if (typeof err?.message === 'string' && err.message.startsWith('Stok produk')) {
-      return NextResponse.json({ error: err.message }, { status: 400 })
+  } catch (err: unknown) {
+    const message =
+      typeof err === 'object' && err !== null && 'message' in err
+        ? String((err as { message?: unknown }).message)
+        : null
+
+    if (message?.startsWith('Stok produk')) {
+      return NextResponse.json({ error: message }, { status: 400 })
     }
-    if (typeof err?.message === 'string' && err.message.includes('Produk dengan ID')) {
-      return NextResponse.json({ error: err.message }, { status: 404 })
+    if (message?.includes('Produk dengan ID')) {
+      return NextResponse.json({ error: message }, { status: 404 })
     }
 
     console.error('TRANSACTION ERROR:', err)

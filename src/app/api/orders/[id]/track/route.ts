@@ -3,12 +3,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { adminAuth } from '@/lib/firebase-admin'
 import { toOrderStatus } from '@/lib/shipping/status-map'
+import type { Transaction } from '@prisma/client'
+
 export const dynamic = 'force-dynamic'
 
 const KOMERCE_URL = 'https://rajaongkir.komerce.id/api/v1/track/waybill'
 const PROVIDER_TIMEOUT_MS = 15000
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+type RouteParamsAsync = { params: Promise<{ id: string }> }
+type UIManifest = { date: string; time: string; description: string; city: string }
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return (v && typeof v === 'object' ? (v as Record<string, unknown>) : {}) as Record<string, unknown>
+}
+function asString(v: unknown): string {
+  return typeof v === 'string' ? v : ''
+}
+
+export async function POST(req: NextRequest, ctx: RouteParamsAsync) {
   try {
     const { id } = await ctx.params
     if (!id) return NextResponse.json({ ok: false, message: 'ID order kosong' }, { status: 400 })
@@ -54,26 +66,34 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // normalisasi courier untuk provider
     const courierCode = String(order.courierCode).trim().toLowerCase()
 
-    // call provider + timeout
+    // call provider + timeout (tanpa .catch(e=>...) supaya tidak infer any)
     const controller = new AbortController()
     const tm = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS)
-    const res = await fetch(KOMERCE_URL, {
-      method: 'POST',
-      headers: {
-        accept: 'application/json',
-        key: apiKey,
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        awb: String(order.trackingNumber).trim(),
-        courier: courierCode,
-      }),
-      cache: 'no-store',
-      signal: controller.signal,
-    }).catch((e) => (e?.name === 'AbortError' ? new Response(null, { status: 504 }) : Promise.reject(e)))
-    clearTimeout(tm)
 
-    if (!res) return NextResponse.json({ ok: false, message: 'Tidak ada respons provider' }, { status: 502 })
+    let res: Response
+    try {
+      res = await fetch(KOMERCE_URL, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          key: apiKey,
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          awb: String(order.trackingNumber).trim(),
+          courier: courierCode,
+        }),
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+    } catch (e: unknown) {
+      clearTimeout(tm)
+      if (e && typeof e === 'object' && 'name' in e && (e as { name?: string }).name === 'AbortError') {
+        return NextResponse.json({ ok: false, message: 'Timeout ke provider' }, { status: 504 })
+      }
+      throw e
+    }
+    clearTimeout(tm)
 
     const ctype = res.headers.get('content-type') || ''
     if (!ctype.includes('application/json')) {
@@ -84,26 +104,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       )
     }
 
-    const payload = await res.json().catch(() => null)
-    if (!payload) return NextResponse.json({ ok: false, message: 'Gagal parse JSON provider' }, { status: 502 })
+    const payloadUnknown = await res.json().catch(() => null)
+    if (!payloadUnknown) return NextResponse.json({ ok: false, message: 'Gagal parse JSON provider' }, { status: 502 })
 
-    // provider kadang 200 tapi meta.code error
-    if (!res.ok || (typeof payload?.meta?.code === 'number' && payload.meta.code >= 400)) {
-      return NextResponse.json({ ok: false, message: payload?.meta?.message || 'Gagal tracking' }, { status: 502 })
+    const payload = asRecord(payloadUnknown)
+    const meta = asRecord(payload.meta)
+    if (!res.ok || (typeof meta.code === 'number' && meta.code >= 400)) {
+      return NextResponse.json({ ok: false, message: asString(meta.message) || 'Gagal tracking' }, { status: 502 })
     }
 
-    const data = payload?.data
-    if (!data) return NextResponse.json({ ok: false, message: 'Data tracking kosong' }, { status: 502 })
+    const data = asRecord(payload.data)
+    if (!payload.data) return NextResponse.json({ ok: false, message: 'Data tracking kosong' }, { status: 502 })
 
     // status & update order
+    const delivery_status = asRecord(data.delivery_status)
+    const summary = asRecord(data.summary)
+
     const providerStatus: string =
-      data?.delivery_status?.status || data?.summary?.status || data?.status || ''
+      asString(delivery_status.status) || asString(summary.status) || asString((payload as Record<string, unknown>).status)
+
     const normalized = toOrderStatus(providerStatus)
 
-    const updates: Record<string, any> = {}
+    // ⬇️ Tanpa any: batasi ke subset field Transaction yang diupdate
+    const updates: Partial<Pick<Transaction, 'deliveredAt' | 'shippedAt' | 'status'>> = {}
     if (normalized === 'DELIVERED') {
-      const podDate = data?.delivery_status?.pod_date ?? ''
-      const podTime = data?.delivery_status?.pod_time ?? '00:00:00'
+      const podDate = asString(delivery_status.pod_date)
+      const podTime = asString(delivery_status.pod_time) || '00:00:00'
       const when = podDate ? new Date(`${podDate}T${podTime}`) : new Date()
       updates.deliveredAt = order.deliveredAt ?? when
       if (order.status !== 'done') updates.status = 'done'
@@ -115,33 +141,37 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       await prisma.transaction.update({ where: { id: order.id }, data: updates })
     }
 
-    // === Mapping ke shape yang diharapkan UI /orders/[id] ===
+    // === Mapping ke shape UI /orders/[id] ===
+    const details = asRecord(data.details)
+
     const waybill =
-      data?.details?.waybill_number ??
-      data?.summary?.waybill_number ??
-      order.trackingNumber ??
+      asString(details.waybill_number) ||
+      asString(summary.waybill_number) ||
+      order.trackingNumber ||
       null
 
     const courier =
-      data?.summary?.courier_code ??
-      data?.summary?.courier_name ??
-      data?.details?.courier ??
-      courierCode ??
+      asString(summary.courier_code) ||
+      asString(summary.courier_name) ||
+      asString(details.courier) ||
+      courierCode ||
       null
 
     const service =
-      data?.summary?.service_code ??
-      data?.details?.service ??
+      asString(summary.service_code) ||
+      asString(details.service) ||
       null
 
-    const manifest = Array.isArray(data?.manifest)
-      ? data.manifest.map((m: any) => ({
-          date: m?.manifest_date ?? '',
-          time: m?.manifest_time ?? '',
-          description: m?.manifest_description ?? m?.manifest_code ?? '',
-          city: m?.city_name ?? '',
-        }))
-      : []
+    const manifestArr = Array.isArray(data.manifest) ? (data.manifest as unknown[]) : []
+    const manifest: UIManifest[] = manifestArr.map((m) => {
+      const mr = asRecord(m)
+      return {
+        date: asString(mr.manifest_date),
+        time: asString(mr.manifest_time),
+        description: asString(mr.manifest_description) || asString(mr.manifest_code),
+        city: asString(mr.city_name),
+      }
+    })
 
     return NextResponse.json({
       ok: true,
@@ -151,12 +181,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         service,
         status: providerStatus || null,
         delivered: normalized === 'DELIVERED',
-        summary: data?.summary ?? null,
+        summary: Object.keys(summary).length ? summary : null,
         manifest,
       },
     })
-  } catch (e: any) {
-    if (e?.name === 'AbortError') {
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'name' in e && (e as { name?: string }).name === 'AbortError') {
       return NextResponse.json({ ok: false, message: 'Timeout ke provider' }, { status: 504 })
     }
     console.error('[POST /api/orders/:id/track]', e)
