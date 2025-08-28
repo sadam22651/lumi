@@ -9,16 +9,21 @@ export const dynamic = 'force-dynamic'
 // Cek admin via env: NEXT_PUBLIC_ADMIN_EMAIL="a@x.com,b@y.com"
 function isEmailAdmin(email?: string | null) {
   const adminEnv = process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? ''
-  const list = adminEnv.split(',').map(s => s.trim()).filter(Boolean)
+  const list = adminEnv.split(',').map((s) => s.trim()).filter(Boolean)
   return !!email && list.includes(email)
 }
 
-export async function POST(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> } // ✅ konsisten dengan route track
-) {
+// Type guard untuk error dari Prisma (punya .code)
+type WithCode = { code?: string }
+function hasCode(err: unknown): err is WithCode {
+  return typeof err === 'object' && err !== null && 'code' in err
+}
+
+type RouteParamsAsync = { params: Promise<{ id: string }> }
+
+export async function POST(req: NextRequest, { params }: RouteParamsAsync) {
   try {
-    const { id } = await context.params
+    const { id } = await params
     if (!id) {
       return NextResponse.json({ ok: false, error: 'ID transaksi kosong' }, { status: 400 })
     }
@@ -43,25 +48,39 @@ export async function POST(
     }
 
     // ===== Body & normalisasi =====
-    const body = await req.json().catch(() => ({} as any))
-    const trackingNumber = String(body?.waybill ?? '').trim()
-    const courierRaw = String(body?.courier ?? '').trim()
+    let rawBody: unknown
+    try {
+      rawBody = await req.json()
+    } catch {
+      rawBody = {}
+    }
+    const body = (rawBody && typeof rawBody === 'object'
+      ? (rawBody as Record<string, unknown>)
+      : {}) as Record<string, unknown>
+
+    const trackingNumber = typeof body.waybill === 'string'
+      ? body.waybill.trim()
+      : String(body.waybill ?? '').trim()
+
+    const courierRaw = typeof body.courier === 'string'
+      ? body.courier.trim()
+      : String(body.courier ?? '').trim()
 
     if (!trackingNumber || !courierRaw) {
       return NextResponse.json(
         { ok: false, error: 'waybill & courier wajib diisi' },
-        { status: 400 }
+        { status: 400 },
       )
     }
     if (trackingNumber.length < 5) {
       return NextResponse.json(
         { ok: false, error: 'Format waybill/resi tidak valid' },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
     // Terima code langsung (jnt/sicepat/…) atau label (J&T Express, SiCepat, …)
-    const normalized =
+    const normalized: CourierCode | null =
       (COURIER_CODES as readonly string[]).includes(courierRaw.toLowerCase())
         ? (courierRaw.toLowerCase() as CourierCode)
         : labelToCode(courierRaw)
@@ -69,7 +88,7 @@ export async function POST(
     if (!normalized) {
       return NextResponse.json(
         { ok: false, error: `Kurir tidak dikenal. Gunakan salah satu code: ${COURIER_CODES.join(', ')}` },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -83,10 +102,7 @@ export async function POST(
     }
 
     // (opsional) kalau tidak ada perubahan, return cepat
-    if (
-      existing.trackingNumber === trackingNumber &&
-      existing.courierCode === normalized
-    ) {
+    if (existing.trackingNumber === trackingNumber && existing.courierCode === normalized) {
       return NextResponse.json({
         ok: true,
         unchanged: true,
@@ -106,8 +122,8 @@ export async function POST(
     })
 
     return NextResponse.json({ ok: true, transaction: updated })
-  } catch (err: any) {
-    if (err?.code === 'P2025') {
+  } catch (err: unknown) {
+    if (hasCode(err) && err.code === 'P2025') {
       return NextResponse.json({ ok: false, error: 'Transaksi tidak ditemukan' }, { status: 404 })
     }
     console.error('[ORDERS/SHIPPING POST ERROR]', err)

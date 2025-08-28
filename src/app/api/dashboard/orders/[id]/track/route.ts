@@ -1,8 +1,9 @@
-// src/app/api/orders/[id]/track/route.ts
+// src/app/api/dashboard/orders/[id]/track/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { adminAuth } from '@/lib/firebase-admin'
 import { toOrderStatus } from '@/lib/shipping/status-map'
+import type { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,17 +11,45 @@ const KOMERCE_URL = 'https://rajaongkir.komerce.id/api/v1/track/waybill'
 const PROVIDER_TIMEOUT_MS = 15000
 
 function isEmailAdmin(email?: string | null) {
-  const adminEnv = process.env.NEXT_PUBLIC_ADMIN_EMAIL??''
+  const adminEnv = process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? ''
   const list = adminEnv.split(',').map(s => s.trim()).filter(Boolean)
   return !!email && list.includes(email)
 }
 
+/* ---------- Types untuk respons provider ---------- */
+type KomerceMeta = { code: number; message: string }
+type KomerceDeliveryStatus = {
+  status?: string
+  pod_date?: string
+  pod_time?: string
+  pod_receiver?: string
+}
+type KomerceSummary = {
+  status?: string
+  waybill_number?: string
+  courier_name?: string
+}
+type KomerceData = {
+  delivery_status?: KomerceDeliveryStatus
+  summary?: KomerceSummary
+  status?: string
+}
+type KomerceResponse = {
+  meta: KomerceMeta
+  data?: KomerceData
+}
+
+/* helper: cek AbortError tanpa any */
+function isAbortError(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && 'name' in e && (e as { name?: unknown }).name === 'AbortError'
+}
+
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }   // ⬅️ params adalah Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params                           // ⬅️ await dulu
+    const { id } = await params
     if (!id) {
       return NextResponse.json({ ok: false, message: 'ID transaksi kosong' }, { status: 400 })
     }
@@ -88,8 +117,8 @@ export async function POST(
       body: new URLSearchParams({ awb: tx.trackingNumber, courier: tx.courierCode }),
       cache: 'no-store',
       signal: controller.signal,
-    }).catch((e) => {
-      if (e?.name === 'AbortError') {
+    }).catch((e: unknown) => {
+      if (isAbortError(e)) {
         return new Response(null, { status: 504, statusText: 'Timeout' })
       }
       throw e
@@ -110,7 +139,7 @@ export async function POST(
       )
     }
 
-    const body = await res.json().catch(() => null)
+    const body = (await res.json().catch(() => null)) as KomerceResponse | null
     if (!body) {
       return NextResponse.json(
         { ok: false, message: 'Gagal parse JSON dari provider', httpStatus: 502 },
@@ -126,7 +155,7 @@ export async function POST(
       )
     }
 
-    const data = body?.data
+    const data = body.data
     if (!data) {
       return NextResponse.json(
         { ok: false, message: 'Data tracking kosong dari provider', raw: body },
@@ -136,17 +165,20 @@ export async function POST(
 
     // ===== Normalisasi status =====
     const providerStatus =
-      data?.delivery_status?.status ||
-      data?.summary?.status ||
-      data?.status ||
+      data.delivery_status?.status ||
+      data.summary?.status ||
+      data.status ||
       ''
+
     const normalized = toOrderStatus(providerStatus) // 'PENDING' | 'PACKED' | 'SHIPPED' | 'DELIVERED'
 
-    // ===== Update transaksi bila perlu =====
-    const updates: Record<string, any> = {}
+    // ===== Update transaksi bila perlu (tanpa any) =====
+    type TxStatus = 'paid' | 'processing' | 'shipped' | 'done' | 'cancelled'
+    const updates: Partial<{ shippedAt: Date; deliveredAt: Date; status: TxStatus }> = {}
+
     if (normalized === 'DELIVERED') {
-      const podDate = data?.delivery_status?.pod_date ?? ''
-      const podTime = data?.delivery_status?.pod_time ?? '00:00:00'
+      const podDate = data.delivery_status?.pod_date ?? ''
+      const podTime = data.delivery_status?.pod_time ?? '00:00:00'
       const podIso = podDate ? new Date(`${podDate}T${podTime}`) : new Date()
       updates.deliveredAt = tx.deliveredAt ?? podIso
       if (tx.status !== 'done') updates.status = 'done'
@@ -155,19 +187,21 @@ export async function POST(
       if (!tx.shippedAt) updates.shippedAt = new Date()
       if (tx.status === 'paid' || tx.status === 'processing') updates.status = 'shipped'
     }
-    // (opsional) simpan cache tracking
-    // updates.tracking_json = body
-    // updates.last_tracked_at = new Date()
 
     if (Object.keys(updates).length > 0) {
-      await prisma.transaction.update({ where: { id: tx.id }, data: updates })
+      await prisma.transaction.update({
+        where: { id: tx.id },
+        // cast aman ke tipe Prisma tanpa any
+        data: updates as Prisma.TransactionUpdateInput,
+      })
     }
 
     return NextResponse.json({ ok: true, meta: body.meta, data: body.data })
-  } catch (err: any) {
-    if (err?.name === 'AbortError') {
+  } catch (err: unknown) {
+    if (isAbortError(err)) {
       return NextResponse.json({ ok: false, message: 'Timeout ke provider' }, { status: 504 })
     }
+    // eslint-disable-next-line no-console
     console.error('[ORDERS/TRACK POST ERROR]', err)
     return NextResponse.json({ ok: false, message: 'Server error' }, { status: 500 })
   }

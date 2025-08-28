@@ -1,5 +1,6 @@
+// src/app/api/shipping-cost/route.ts (contoh)
 import { NextRequest, NextResponse } from 'next/server'
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,11 +24,18 @@ export async function POST(req: NextRequest) {
     )
 
     return NextResponse.json(response.data)
-  } catch (error: any) {
-    console.error('ERROR:', error.response?.data || error.message)
-    return NextResponse.json(
-      { error: error.response?.data || error.message },
-      { status: error.response?.status || 500 }
-    )
+  } catch (err: unknown) {
+    // gunakan type guard untuk AxiosError
+    if (axios.isAxiosError(err)) {
+      const axErr = err as AxiosError
+      console.error('ERROR:', axErr.response?.data || axErr.message)
+      return NextResponse.json(
+        { error: axErr.response?.data || axErr.message },
+        { status: axErr.response?.status || 500 }
+      )
+    }
+
+    console.error('ERROR:', err)
+    return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }
