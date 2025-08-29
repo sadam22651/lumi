@@ -13,7 +13,7 @@ type OptionalBody = {
   image?: string
 }
 
-// type guard sederhana untuk akses .message dan/atau .code
+// type guard sederhana untuk akses .message dan/atau .code dari error unknown
 function getErrorInfo(err: unknown): { message?: string; code?: string } {
   const out: { message?: string; code?: string } = {}
   if (err && typeof err === 'object') {
@@ -50,17 +50,19 @@ export async function POST(req: NextRequest) {
     } catch {
       raw = {}
     }
-    const body = (raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}) as Record<string, unknown>
+    const body: OptionalBody =
+      raw && typeof raw === 'object' ? (raw as OptionalBody) : ({} as OptionalBody)
 
-    const email = typeof body.email === 'string' ? body.email : undefined
-    const name = typeof body.name === 'string' ? body.name : undefined
-    const image = typeof body.image === 'string' ? body.image : undefined
+    const email = body.email
+    const name = body.name
+    const image = body.image
 
     const decodedEmail = typeof decoded.email === 'string' ? decoded.email : undefined
     const decodedName = typeof decoded.name === 'string' ? decoded.name : undefined
-    const decodedPicture = typeof (decoded as { picture?: unknown }).picture === 'string'
-      ? (decoded as { picture: string }).picture
-      : undefined
+    const decodedPicture =
+      typeof (decoded as { picture?: unknown }).picture === 'string'
+        ? (decoded as { picture: string }).picture
+        : undefined
 
     // --- Upsert user (idempotent & race-safe) ---
     const user = await prisma.user.upsert({
@@ -81,7 +83,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ userId: user.id, user }, { status: 200 })
   } catch (e: unknown) {
-    // Token invalid/expired atau masalah lainnya
     const { message, code } = getErrorInfo(e)
     const msg = message ?? String(e)
 

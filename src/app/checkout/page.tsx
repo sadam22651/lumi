@@ -34,29 +34,65 @@ interface DistrictResult {
   city_name: string
 }
 
+/** ====== Typings eksternal ringan ====== */
+type CartAPIItem = {
+  id?: string
+  quantity: number
+  product?: { id: string; name: string; price: number }
+  name?: string
+  price?: number
+}
+type CartAPIResponse = { items?: CartAPIItem[] }
+
+type ProviderOptionBase = {
+  shipping_name: string
+  service_name: string
+  shipping_cost_net: number
+  etd: string
+  is_cod: boolean
+}
+type ShippingAPIResponse = {
+  data?: {
+    calculate_reguler?: ProviderOptionBase[]
+    calculate_cargo?: ProviderOptionBase[]
+    calculate_instant?: ProviderOptionBase[]
+  }
+}
+
+/** ====== Midtrans Snap typing ====== */
+type SnapCallbacks = {
+  onSuccess?: () => void
+  onError?: () => void
+  onClose?: () => void
+  onPending?: () => void
+}
+type WindowWithSnap = Window & {
+  snap: { pay: (token: string, callbacks?: SnapCallbacks) => void }
+}
+
 /** =========================
  *  Mapping nama kurir → kode kurir (untuk API tracking)
  *  ========================= */
 const COURIER_CODE_MAP: Record<string, string> = {
-  'JNE': 'jne',
-  'POS': 'pos',
+  JNE: 'jne',
+  POS: 'pos',
   'POS INDONESIA': 'pos',
-  'TIKI': 'tiki',
+  TIKI: 'tiki',
   'J&T': 'jnt',
   'J&T EXPRESS': 'jnt',
-  'SICEPAT': 'sicepat',
+  SICEPAT: 'sicepat',
   'SICEPAT EXPRESS': 'sicepat',
-  'ANTERAJA': 'anteraja',
-  'WAHANA': 'wahana',
+  ANTERAJA: 'anteraja',
+  WAHANA: 'wahana',
   'LION PARCEL': 'lion',
-  'NINJA': 'ninja',
+  NINJA: 'ninja',
   'NINJA XPRESS': 'ninja',
-  'SAP': 'sap',
+  SAP: 'sap',
   'SAP EXPRESS': 'sap',
-  'JET': 'jet',
+  JET: 'jet',
   'JET EXPRESS': 'jet',
-  'RPX': 'rex',
-  'REX': 'rex',
+  RPX: 'rex',
+  REX: 'rex',
 }
 function toCourierCode(shippingName?: string) {
   if (!shippingName) return ''
@@ -94,12 +130,13 @@ export default function CheckoutPage() {
     user.getIdToken().then(async (token) => {
       setUserId(user.uid)
       try {
-        const res = await axios.get('/api/cart', {
+        const res = await axios.get<CartAPIResponse>('/api/cart', {
           headers: { Authorization: `Bearer ${token}` },
         })
-        const cartItems = (res.data.items || []).map((i: any) => ({
-          id: i.product?.id ?? i.id,
-          name: i.product?.name ?? i.name,
+        const raw = res.data?.items ?? []
+        const cartItems: CartItem[] = raw.map((i) => ({
+          id: i.product?.id ?? i.id ?? '',
+          name: i.product?.name ?? i.name ?? '',
           price: i.product?.price ?? i.price ?? 0,
           quantity: i.quantity ?? 1,
         }))
@@ -119,7 +156,7 @@ export default function CheckoutPage() {
     if (!destination) return toast.error('Pilih tujuan pengiriman')
 
     try {
-      const res = await axios.post('/api/shipping/cost', {
+      const res = await axios.post<ShippingAPIResponse>('/api/shipping/cost', {
         origin: originId,
         destination: destination.id,
         weight: defaultWeight,
@@ -127,19 +164,26 @@ export default function CheckoutPage() {
         cod: isCod ? 'yes' : 'no',
       })
 
-      const reguler = (res.data?.data?.calculate_reguler ?? []).map((item: any) => ({
-        ...item, type: 'reguler',
+      const regulerSrc = res.data?.data?.calculate_reguler ?? []
+      const cargoSrc = res.data?.data?.calculate_cargo ?? []
+      const instantSrc = res.data?.data?.calculate_instant ?? []
+
+      const reguler: ShippingOption[] = regulerSrc.map((item) => ({
+        ...item,
+        type: 'reguler',
       }))
-      const cargo = (res.data?.data?.calculate_cargo ?? []).map((item: any) => ({
-        ...item, type: 'cargo',
+      const cargo: ShippingOption[] = cargoSrc.map((item) => ({
+        ...item,
+        type: 'cargo',
       }))
-      const instant = (res.data?.data?.calculate_instant ?? []).map((item: any) => ({
-        ...item, type: 'instant',
+      const instant: ShippingOption[] = instantSrc.map((item) => ({
+        ...item,
+        type: 'instant',
       }))
 
       setShippingOptions([...reguler, ...cargo, ...instant])
       toast.success('Ongkir berhasil diambil!')
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Gagal ambil ongkir:', err)
       toast.error('Gagal mengambil ongkir')
     }
@@ -162,21 +206,22 @@ export default function CheckoutPage() {
       const user = auth.currentUser
       const token = await user?.getIdToken()
 
-      // 🚫 Dihapus: PATCH ke /api/cart/shipping
-
       // Ambil token Midtrans
-      const { data } = await axios.post('/api/tokenizer', {
+      const { data } = await axios.post<{ token: string }>('/api/tokenizer', {
         userId,
         items: [
           ...items.map((i) => ({
-            id: i.id, productName: i.name, price: i.price, quantity: i.quantity,
+            id: i.id,
+            productName: i.name,
+            price: i.price,
+            quantity: i.quantity,
           })),
           { id: 'ongkir', productName: 'Biaya Pengiriman', price: shippingCost, quantity: 1 },
         ],
       })
 
       const tokenMidtrans = data.token
-      ;(window as any).snap.pay(tokenMidtrans, {
+      ;(window as unknown as WindowWithSnap).snap.pay(tokenMidtrans, {
         onSuccess: async () => {
           try {
             await axios.post(
@@ -204,14 +249,14 @@ export default function CheckoutPage() {
             )
             toast.success('Pembayaran & transaksi berhasil!')
             router.push('/')
-          } catch (err) {
+          } catch (err: unknown) {
             console.error('Gagal simpan transaksi:', err)
             toast.error('Pembayaran berhasil, tapi gagal simpan transaksi.')
           }
         },
         onError: () => toast.error('Pembayaran gagal.'),
       })
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err)
       toast.error('Terjadi kesalahan saat checkout.')
     }
@@ -313,9 +358,7 @@ export default function CheckoutPage() {
                       <p className="text-xs text-gray-500">
                         Kode kurir: {selected ? courierCode : codePreview}
                       </p>
-                      <p className="text-sm text-gray-500">
-                        COD: {opt.is_cod ? 'Ya' : 'Tidak'}
-                      </p>
+                      <p className="text-sm text-gray-500">COD: {opt.is_cod ? 'Ya' : 'Tidak'}</p>
                     </li>
                   )
                 })}

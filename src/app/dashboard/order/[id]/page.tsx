@@ -1,3 +1,4 @@
+// src/app/dashboard/order/[id]/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -29,11 +30,24 @@ type Transaction = {
   shippingCost: number
   totalAmount: number
   items: TransactionItem[]
-  // 🔹 field shipping dari schema kamu
   courierCode?: string | null
   trackingNumber?: string | null
   shippedAt?: string | null
   deliveredAt?: string | null
+}
+
+/** ====== Typings untuk hasil tracking ====== */
+type TrackMeta = { message?: string; code?: number }
+type TrackSummary = {
+  waybill_number?: string
+  status?: string
+  courier_name?: string
+}
+type TrackDeliveryStatus = { pod_receiver?: string }
+type TrackData = {
+  summary?: TrackSummary
+  delivery_status?: TrackDeliveryStatus
+  [k: string]: unknown
 }
 
 const formatRp = (n: number) => `Rp${(n ?? 0).toLocaleString('id-ID')}`
@@ -54,31 +68,31 @@ export default function OrderDetailPage() {
 
   const [savingShip, setSavingShip] = useState(false)
   const [tracking, setTracking] = useState(false)
-  const [trackMeta, setTrackMeta] = useState<any | null>(null)
-  const [trackData, setTrackData] = useState<any | null>(null)
+  const [trackMeta, setTrackMeta] = useState<TrackMeta | null>(null)
+  const [trackData, setTrackData] = useState<TrackData | null>(null)
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchTx = async () => {
       try {
         const token = await user?.getIdToken()
-        const res = await axios.get(`/api/dashboard/orders/${id}`, {
+        const res = await axios.get<{ transaction: Transaction }>(`/api/dashboard/orders/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-        const tx: Transaction = res.data.transaction
+        const tx = res.data.transaction
         setData(tx)
         setStatus(tx.status)
 
         // isi form shipping dari data
         setCourierCode(tx.courierCode || '')
         setTrackingNumber(tx.trackingNumber || '')
-      } catch (e) {
+      } catch (e: unknown) {
         toast.error('Gagal memuat detail transaksi')
         console.error(e)
       } finally {
         setLoading(false)
       }
     }
-    if (user) fetch()
+    if (user) fetchTx()
   }, [user, id])
 
   const updateStatus = async () => {
@@ -91,7 +105,7 @@ export default function OrderDetailPage() {
       )
       toast.success('Status berhasil diperbarui')
       router.refresh()
-    } catch (err) {
+    } catch (err: unknown) {
       toast.error('Gagal update status')
       console.error(err)
     }
@@ -101,9 +115,18 @@ export default function OrderDetailPage() {
     if (!data) return
     try {
       setDownloading(true)
-      const pdfMake = (await import('pdfmake/build/pdfmake')).default as any
-      const pdfFonts = (await import('pdfmake/build/vfs_fonts')).default as any
-      pdfMake.vfs = pdfFonts.vfs
+
+      type PdfMake = {
+        vfs: Record<string, string>
+        createPdf: (def: unknown) => { download: (name?: string) => void }
+      }
+      type PdfMakeModule = { default: PdfMake }
+      type PdfFontsModule = { default: { vfs: Record<string, string> } }
+
+      const pdfMakeMod = (await import('pdfmake/build/pdfmake')) as unknown as PdfMakeModule
+      const pdfFontsMod = (await import('pdfmake/build/vfs_fonts')) as unknown as PdfFontsModule
+      const pdfMake = pdfMakeMod.default
+      pdfMake.vfs = pdfFontsMod.default.vfs
 
       const docDefinition = {
         content: [
@@ -158,7 +181,7 @@ export default function OrderDetailPage() {
       }
 
       pdfMake.createPdf(docDefinition).download(`invoice-${data.id}.pdf`)
-    } catch (e) {
+    } catch (e: unknown) {
       toast.error('Gagal membuat invoice')
       console.error(e)
     } finally {
@@ -183,35 +206,43 @@ export default function OrderDetailPage() {
       )
       toast.success('Pengiriman disimpan')
       router.refresh()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Gagal simpan pengiriman')
+    } catch (e: unknown) {
+      if (axios.isAxiosError(e)) {
+        toast.error((e.response?.data as { message?: string } | undefined)?.message || 'Gagal simpan pengiriman')
+      } else {
+        toast.error('Gagal simpan pengiriman')
+      }
       console.error(e)
     } finally {
       setSavingShip(false)
     }
   }
 
-  // 🔹 Lacak sekarang -> POST /api/orders/[id]/track
+  // 🔹 Lacak sekarang -> POST /api/orders/[id]/track (dashboard)
   async function trackNow() {
     if (!id) return
     try {
       setTracking(true)
       const token = await user?.getIdToken()
-      const res = await axios.post(
+      const res = await axios.post<{ ok?: boolean; meta?: TrackMeta; data?: TrackData; message?: string }>(
         `/api/dashboard/orders/${id}/track`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       )
       const j = res.data
       if (j?.ok) {
-        setTrackMeta(j.meta)
-        setTrackData(j.data)
+        setTrackMeta(j.meta ?? null)
+        setTrackData(j.data ?? null)
         toast.success('Tracking diperbarui')
       } else {
         toast.error(j?.message || 'Gagal tracking')
       }
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Gagal tracking')
+    } catch (e: unknown) {
+      if (axios.isAxiosError(e)) {
+        toast.error((e.response?.data as { message?: string } | undefined)?.message || 'Gagal tracking')
+      } else {
+        toast.error('Gagal tracking')
+      }
       console.error(e)
     } finally {
       setTracking(false)
@@ -221,7 +252,9 @@ export default function OrderDetailPage() {
   if (loading) return <p className="p-4">Loading...</p>
   if (!data) return <p className="p-4">Transaksi tidak ditemukan.</p>
 
-  const courierLabel = courierCode ? (COURIER_LABELS as any)[courierCode] || courierCode.toUpperCase() : '-'
+  const courierLabelMap = COURIER_LABELS as unknown as Record<string, string>
+  const courierLabel =
+    courierCode ? courierLabelMap[courierCode] || courierCode.toUpperCase() : '-'
 
   return (
     <div className="p-6 space-y-4">
@@ -272,7 +305,7 @@ export default function OrderDetailPage() {
         {/* Ringkasan tracking (kalau habis klik lacak) */}
         {trackMeta && (
           <div className="rounded border p-3 bg-green-50 mt-3">
-            <div className="text-sm">Meta: {trackMeta.message} (code {trackMeta.code})</div>
+            <div className="text-sm">Meta: {trackMeta.message} {typeof trackMeta.code === 'number' ? `(code ${trackMeta.code})` : ''}</div>
           </div>
         )}
         {trackData?.summary && (

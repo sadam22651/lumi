@@ -61,7 +61,7 @@ export default function HomePage() {
             Selamat Datang di Widuri Store
           </h1>
           <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
-            Temukan perhiasan perak pilihan—ring, kalung nama, gelang—untuk momen spesialmu.
+            Temukan perhiasan perak pilihan—cincin, kalung nama, gelang—untuk momen spesialmu.
           </p>
           <p className="mt-3 text-sm italic text-muted-foreground">
             Berpengalaman lebih dari 20 tahun
