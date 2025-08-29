@@ -1,15 +1,28 @@
-// src/app/orders/page.tsx
+// src/app/order/page.tsx
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { getAuth, onIdTokenChanged } from 'firebase/auth'
 import { app } from '@/lib/firebase'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 type OrderRow = {
   id: string
   status: 'PENDING' | 'PAID' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'
   totalAmount: number
   createdAt: string
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = (err as { message?: unknown }).message
+    if (typeof m === 'string') return m
+  }
+  try {
+    return String(err)
+  } catch {
+    return 'Terjadi kesalahan'
+  }
 }
 
 export default function OrdersPage() {
@@ -38,13 +51,21 @@ export default function OrdersPage() {
           headers: { Authorization: `Bearer ${token}` },
           cache: 'no-store',
         })
-        const j = await r.json()
-        if (!r.ok) throw new Error(j?.error || 'Gagal memuat pesanan')
+        const j = (await r.json().catch(() => null)) as unknown
 
-        setRows((j.orders || []) as OrderRow[])
-      } catch (e: any) {
-        console.error(e)
-        setError(e?.message || 'Terjadi kesalahan')
+        if (!r.ok) {
+          const msg =
+            (j && typeof j === 'object' && 'error' in j && typeof (j as { error?: string }).error === 'string'
+              ? (j as { error?: string }).error
+              : undefined) || 'Gagal memuat pesanan'
+          throw new Error(msg)
+        }
+
+        const orders = (j as { orders?: OrderRow[] })?.orders ?? []
+        setRows(orders)
+      } catch (err: unknown) {
+        console.error(err)
+        setError(getErrorMessage(err))
       } finally {
         setLoading(false)
       }
@@ -54,7 +75,6 @@ export default function OrdersPage() {
   }, [router])
 
   const onRefresh = async () => {
-    // trigger ulang listener dengan “noop”: pindah route lalu kembali
     router.refresh()
   }
 
@@ -117,7 +137,7 @@ export default function OrdersPage() {
               <li key={o.id}>
                 <OrderCard
                   order={o}
-                  onClick={() => router.push(`/order/${o.id}`)} // tetap pakai path lama Anda
+                  onClick={() => router.push(`/order/${o.id}`)}
                 />
               </li>
             ))}
@@ -220,12 +240,12 @@ function EmptyState() {
       <p className="mt-1 text-sm text-zinc-500">
         Pesanan Anda akan tampil di sini setelah checkout berhasil.
       </p>
-      <a
+      <Link
         href="/"
         className="mt-4 inline-flex items-center justify-center rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
       >
         Mulai belanja
-      </a>
+      </Link>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+// src/app/login/page.tsx
 'use client'
 
 import React, { useState } from 'react'
@@ -8,6 +9,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Loader2 } from 'lucide-react'
+
+type AuthErrorLike = { code?: string; message?: string }
+
+function getErrorInfo(err: unknown): AuthErrorLike {
+  if (err && typeof err === 'object') {
+    const obj = err as Record<string, unknown>
+    return {
+      code: typeof obj.code === 'string' ? obj.code : undefined,
+      message: typeof obj.message === 'string' ? obj.message : undefined,
+    }
+  }
+  return {}
+}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -30,13 +44,15 @@ export default function LoginPage() {
       })
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(data.error || 'Sinkronisasi user gagal')
       }
 
       router.push('/')
-    } catch (err: any) {
-      if (err?.code !== 'auth/cancelled-popup-request') {
+    } catch (err: unknown) {
+      const { code } = getErrorInfo(err)
+      // Abaikan cancel-popup agar tidak menampilkan error ke user
+      if (code !== 'auth/cancelled-popup-request' && code !== 'auth/popup-closed-by-user') {
         console.error('Login/Sync gagal:', err)
         setError('Login gagal. Silakan coba lagi.')
       }

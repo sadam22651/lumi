@@ -1,3 +1,4 @@
+import { Link } from "lucide-react";
 import type { Metadata } from "next";
 import Image from "next/image";
 
@@ -20,7 +21,7 @@ export default function CaraMengukurCincinPage() {
     <main className="mx-auto max-w-3xl px-4 py-10">
       {/* Breadcrumb sederhana */}
       <nav className="mb-6 text-sm text-muted-foreground">
-        <a href="/" className="hover:underline">Beranda</a>
+        <Link href="/" className="hover:underline">Beranda</Link>
         <span className="mx-2">/</span>
         <span className="font-medium text-foreground">Cara Mengukur Cincin</span>
       </nav>

@@ -3,13 +3,45 @@
 
 import { useMemo, useRef, useState } from 'react'
 
+type ProviderSummary = {
+  courier_code?: string
+  courier_name?: string
+  waybill_number?: string
+  service_code?: string
+  waybill_date?: string
+  shipper_name?: string
+  receiver_name?: string
+  origin?: string
+  destination?: string
+  status?: string
+}
+
+type ProviderDetails = {
+  waybill_number?: string
+  waybill_date?: string
+  waybill_time?: string
+  weight?: string | number
+  origin?: string
+  destination?: string
+  shipper_name?: string
+  receiver_name?: string
+  receiver_city?: string
+}
+
+type ProviderDeliveryStatus = {
+  status?: string
+  pod_receiver?: string
+  pod_date?: string
+  pod_time?: string
+}
+
 type TrackingResponse = {
   meta: { message: string; code: number; status: string }
   data?: {
     delivered?: boolean
-    summary?: any
-    details?: any
-    delivery_status?: any
+    summary?: ProviderSummary
+    details?: ProviderDetails
+    delivery_status?: ProviderDeliveryStatus
     manifest?: Array<{
       manifest_code?: string
       manifest_description?: string
@@ -19,17 +51,34 @@ type TrackingResponse = {
     }>
   }
   snippet?: string
-  raw?: any
+  raw?: unknown
 }
 
 const COURIERS = [
   'jne','pos','tiki','jnt','sicepat','anteraja',
   'wahana','lion','ninja','sap','jet','rex'
 ] as const
+type Courier = (typeof COURIERS)[number]
+
+function isCourier(v: string): v is Courier {
+  return (COURIERS as readonly string[]).includes(v)
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = (err as { message?: unknown }).message
+    if (typeof m === 'string') return m
+  }
+  try {
+    return String(err)
+  } catch {
+    return 'Terjadi kesalahan'
+  }
+}
 
 export default function TrackingPage() {
   const [waybill, setWaybill] = useState('')
-  const [courier, setCourier] = useState<(typeof COURIERS)[number]>('wahana')
+  const [courier, setCourier] = useState<Courier>('wahana')
 
   const [loading, setLoading] = useState(false)
   const [resp, setResp] = useState<TrackingResponse | null>(null)
@@ -58,7 +107,7 @@ export default function TrackingPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ waybill: waybill.trim(), courier }),
-        cache: 'no-store' as any,
+        cache: 'no-store',
         signal: controller.signal,
       })
 
@@ -78,9 +127,9 @@ export default function TrackingPage() {
 
       const json: TrackingResponse = await res.json()
       setResp(json)
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return
-      setErr(e?.message || 'Gagal menghubungi server')
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError') return
+      setErr(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -169,7 +218,10 @@ export default function TrackingPage() {
           <select
             className="h-10 rounded-xl border px-3 bg-white"
             value={courier}
-            onChange={(e) => setCourier(e.target.value as any)}
+            onChange={(e) => {
+              const v = e.target.value
+              if (isCourier(v)) setCourier(v)
+            }}
           >
             {COURIERS.map((c) => (
               <option key={c} value={c}>

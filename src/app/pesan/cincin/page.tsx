@@ -1,7 +1,9 @@
+// src/app/pesan/cincin/page.tsx
 "use client"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -9,10 +11,32 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
 
+type FormState = {
+  customerName: string
+  phone: string
+  address: string
+  ringSize: string // pakai string agar mudah diketik, di-parse saat submit
+  engraveText: string
+  quantity: number
+  notes: string
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err) {
+    const m = (err as { message?: unknown }).message
+    if (typeof m === "string") return m
+  }
+  try {
+    return String(err)
+  } catch {
+    return "Terjadi kesalahan"
+  }
+}
+
 export default function PesanCincinPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
     customerName: "",
     phone: "",
     address: "",
@@ -26,7 +50,10 @@ export default function PesanCincinPage() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: name === "quantity" ? Number(value) : value }))
+    setForm((prev) => ({
+      ...prev,
+      [name]: name === "quantity" ? Number(value) : value,
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -59,14 +86,17 @@ export default function PesanCincinPage() {
       })
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err?.error || "Gagal menyimpan pesanan")
+        const errJson = await res.json().catch(() => ({} as Record<string, unknown>))
+        const msg =
+          (typeof errJson?.error === "string" && errJson.error) ||
+          "Gagal menyimpan pesanan"
+        throw new Error(msg)
       }
 
       toast.success("Pesanan cincin berhasil dibuat!")
       router.push("/riwayat-pesanan")
-    } catch (err: any) {
-      toast.error(err.message || "Terjadi kesalahan")
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -75,9 +105,9 @@ export default function PesanCincinPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
       <nav className="mb-6 text-sm text-muted-foreground">
-        <a href="/" className="hover:underline">Beranda</a>
+        <Link href="/" className="hover:underline">Beranda</Link>
         <span className="mx-2">/</span>
-        <a href="/pesan" className="hover:underline">Pesan</a>
+        <Link href="/pesan" className="hover:underline">Pesan</Link>
         <span className="mx-2">/</span>
         <span className="font-medium text-foreground">Cincin</span>
       </nav>

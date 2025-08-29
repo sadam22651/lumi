@@ -1,9 +1,10 @@
 // src/app/orders/[id]/page.tsx
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getAuth } from 'firebase/auth'
 import { app } from '@/lib/firebase'
+import { toast } from 'sonner'
 
 type OrderItem = {
   product: { name: string; image?: string }
@@ -132,6 +133,7 @@ export default function OrderDetailPage() {
             <p className="mt-1 text-xs text-zinc-500">Dibuat: {createdStr}</p>
           </div>
           <button
+            type="button"
             onClick={() => router.back()}
             className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium hover:bg-zinc-50"
           >
@@ -170,6 +172,7 @@ export default function OrderDetailPage() {
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
+                  type="button"
                   onClick={doTrack}
                   disabled={doing.track}
                   className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
@@ -184,6 +187,7 @@ export default function OrderDetailPage() {
 
                 {['paid', 'processing'].includes(data.status) && (
                   <button
+                    type="button"
                     onClick={cancelOrder}
                     disabled={doing.cancel}
                     className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-50 disabled:opacity-50"
@@ -224,7 +228,8 @@ export default function OrderDetailPage() {
                 <div className="font-medium">Pengiriman</div>
                 {data.trackingNumber && (
                   <button
-                    onClick={() => copyToClipboard(data.trackingNumber!)}
+                    type="button"
+                    onClick={() => { void copyToClipboard(data.trackingNumber!) }}
                     className="text-xs underline underline-offset-4 hover:opacity-80"
                   >
                     Salin resi
@@ -361,18 +366,40 @@ function Spinner({ className = '' }) {
 }
 
 /* ---------------- Helpers ---------------- */
-function copyToClipboard(text: string) {
-  if (!navigator?.clipboard) {
-    // fallback
-    const el = document.createElement('textarea')
-    el.value = text
-    document.body.appendChild(el)
-    el.select()
-    document.execCommand('copy')
-    document.body.removeChild(el)
-  } else {
-    navigator.clipboard.writeText(text)
+async function copyToClipboard(text: string): Promise<boolean> {
+  // Gunakan Clipboard API jika tersedia & secure context (HTTPS/localhost)
+  if (typeof navigator !== 'undefined' && navigator.clipboard && typeof window !== 'undefined' && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success('Nomor resi disalin')
+      return true
+    } catch {
+      // lanjut ke fallback
+    }
   }
+
+  // Fallback: execCommand('copy')
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    if (ok) {
+      toast.success('Nomor resi disalin')
+      return true
+    }
+  } catch {
+    // ignore
+  }
+
+  toast.error('Gagal menyalin. Silakan salin manual (Ctrl/Cmd + C).')
+  return false
 }
 
 function formatDateTime(x: string) {
