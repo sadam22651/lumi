@@ -57,7 +57,9 @@
       "protobufjs",
       "sharp",
       "esbuild",
-      "@prisma/engines"
+      "@prisma/engines",
+      "@prisma/client",
+      "prisma"
     ],
     "ignoredBuiltDependencies": [
       "unrs-resolver"
