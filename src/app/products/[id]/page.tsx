@@ -1,3 +1,4 @@
+// src/app/products/[id]/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -6,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import axios from 'axios'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, type User } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 
 interface Product {
@@ -19,13 +20,13 @@ interface Product {
 }
 
 export default function ProductDetailPage() {
-  const { id } = useParams()
+  const { id } = useParams<{ id: string }>()
   const router = useRouter()
 
   const [product, setProduct] = useState<Product | null>(null)
-  const [quantity, setQuantity] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
+  const [quantity, setQuantity] = useState<number>(1)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -71,7 +72,7 @@ export default function ProductDetailPage() {
 
       toast.success('Berhasil ditambahkan ke keranjang')
       router.push('/cart')
-    } catch (err) {
+    } catch {
       toast.error('Gagal menambahkan ke keranjang')
     }
   }
@@ -103,9 +104,11 @@ export default function ProductDetailPage() {
           min={1}
           max={product.stock}
           value={quantity}
-          onChange={(e) =>
-            setQuantity(Math.min(Math.max(+e.target.value, 1), product.stock))
-          }
+          onChange={(e) => {
+            const val = Number(e.target.value)
+            const safe = Number.isFinite(val) ? val : 1
+            setQuantity(Math.min(Math.max(safe, 1), product.stock))
+          }}
           className="w-20"
         />
       </div>

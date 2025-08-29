@@ -1,6 +1,7 @@
+// src/app/dashboard/pesan/page.tsx
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -55,23 +56,31 @@ export default function AdminPesanPage() {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
         if (!res.ok) throw new Error("Gagal memuat data")
-        const data = await res.json()
+
+        const data = (await res.json()) as
+          | { type: "ring"; rows: RingRow[]; total?: number }
+          | { type: "necklace"; rows: NecklaceRow[]; total?: number }
+          | { type: "all"; rows: { rings: RingRow[]; necklaces: NecklaceRow[] } }
 
         if (type === "ring") {
-          setRings(data.rows || [])
+          const d = data as { type: "ring"; rows: RingRow[]; total?: number }
+          setRings(d.rows || [])
           setNecklaces([])
-          setTotal(data.total ?? null)
+          setTotal(d.total ?? null)
         } else if (type === "necklace") {
-          setNecklaces(data.rows || [])
+          const d = data as { type: "necklace"; rows: NecklaceRow[]; total?: number }
+          setNecklaces(d.rows || [])
           setRings([])
-          setTotal(data.total ?? null)
+          setTotal(d.total ?? null)
         } else {
-          setRings(data.rows.rings || [])
-          setNecklaces(data.rows.necklaces || [])
+          const d = data as { type: "all"; rows: { rings: RingRow[]; necklaces: NecklaceRow[] } }
+          setRings(d.rows?.rings || [])
+          setNecklaces(d.rows?.necklaces || [])
           setTotal(null)
         }
-      } catch (e: any) {
-        toast.error(e.message || "Gagal memuat data")
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Gagal memuat data"
+        toast.error(msg)
       } finally {
         setLoading(false)
       }

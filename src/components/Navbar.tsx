@@ -1,3 +1,4 @@
+// src/components/Navbar.tsx
 'use client'
 
 import Link from 'next/link'
@@ -47,7 +48,15 @@ const NAV_ITEMS = [
   { href: '/products', label: 'Produk', icon: PackageIcon },
   { href: '/about',    label: 'About',  icon: InfoIcon },
   // Tutorial dibuat sebagai dropdown terpisah (desktop) & collapsible (mobile)
-]
+] as const
+
+// Tipe minimal untuk respons /api/cart
+type CartApiResponse = {
+  items?: Array<{
+    quantity?: number
+    // properti lain diabaikan untuk hitung badge
+  }>
+}
 
 export default function Navbar() {
   const user = useAuth()
@@ -72,11 +81,11 @@ export default function Navbar() {
       }
       try {
         const token = await user.getIdToken()
-        const res = await axios.get('/api/cart', {
+        const res = await axios.get<CartApiResponse>('/api/cart', {
           headers: { Authorization: `Bearer ${token}` },
         })
-        const items = res.data.items || []
-        const total = items.reduce((sum: number, item: any) => sum + (item.quantity ?? 0), 0)
+        const items = res.data.items ?? []
+        const total = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
         setCartCount(total)
       } catch {
         setCartCount(0)

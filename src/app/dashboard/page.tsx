@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 'use client'
 
 import { useRouter } from 'next/navigation'
@@ -10,7 +11,6 @@ import {
   TruckIcon,
   SettingsIcon,
   LogOutIcon,
-  BarChart3Icon,
 } from 'lucide-react'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
@@ -81,9 +81,6 @@ export default function Dashboard() {
         </div>
         <div className="pointer-events-none absolute -left-14 bottom-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
       </section>
-
-      {/* (Opsional) Quick glance stat card dummy – bisa kamu isi data asli nanti */}
-      
 
       {/* Navigasi Utama */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">

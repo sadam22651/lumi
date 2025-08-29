@@ -18,6 +18,23 @@ interface Order {
   user: { name: string | null; email: string | null }
 }
 
+type OrdersApiResponse = {
+  orders?: Order[]
+}
+
+/** Helper aman untuk mengambil pesan error dari unknown */
+function getErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = (err as { message?: unknown }).message
+    if (typeof m === 'string') return m
+  }
+  try {
+    return String(err)
+  } catch {
+    return 'Terjadi kesalahan'
+  }
+}
+
 export default function AdminOrderPage() {
   const user = useAuth()
   const router = useRouter()
@@ -30,13 +47,13 @@ export default function AdminOrderPage() {
       if (!user) return
       const token = await user.getIdToken()
       try {
-        const res = await axios.get('/api/dashboard/orders', {
+        const res = await axios.get<OrdersApiResponse>('/api/dashboard/orders', {
           headers: { Authorization: `Bearer ${token}` },
         })
         setOrders(res.data.orders ?? [])
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Gagal ambil pesanan:', err)
-        setError(err?.message || 'Gagal memuat pesanan')
+        setError(getErrorMessage(err) || 'Gagal memuat pesanan')
       } finally {
         setLoading(false)
       }
@@ -97,7 +114,7 @@ export default function AdminOrderPage() {
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"
-                  onClick={() => router.push(`/dashboard/order/${order.id}`)} // ✅ plural
+                  onClick={() => router.push(`/dashboard/order/${order.id}`)}
                 >
                   Lihat Detail
                 </Button>
