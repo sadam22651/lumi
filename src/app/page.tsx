@@ -1,3 +1,4 @@
+// src/app/page.tsx (atau sesuai lokasi HomePage kamu)
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
@@ -15,7 +16,7 @@ type Product = {
   name: string
   price: number
   stock: number
-  image?: string
+  imageUrl?: string | null
 }
 
 export default function HomePage() {
@@ -119,9 +120,9 @@ export default function HomePage() {
               <Link key={p.id} href={`/products/${p.id}`}>
                 <Card className="group relative overflow-hidden transition hover:shadow-lg">
                   {/* gambar */}
-                  {p.image ? (
+                  {p.imageUrl ? (
                     <img
-                      src={`/uploads/${p.image}`}
+                      src={p.imageUrl}
                       alt={p.name}
                       className="aspect-[4/3] w-full object-cover transition group-hover:scale-[1.02]"
                     />
@@ -187,7 +188,7 @@ export default function HomePage() {
             <img
               src="/pesanan/kalungnama.jpeg"
               alt="Kalung nama custom"
-              className="mx-auto aspect-[4/3] w-full max-w-md rounded-xl object-cover shadow-sm"
+              className="mx-auto aspect-[4/3] w/full max-w-md rounded-xl object-cover shadow-sm"
             />
           </div>
         </div>
