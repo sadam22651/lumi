@@ -15,7 +15,7 @@ interface Product {
   name: string
   price: number
   stock: number
-  image?: string
+  imageUrl?: string   // ✅ ganti ke imageUrl
   detail?: string
 }
 
@@ -59,17 +59,9 @@ export default function ProductDetailPage() {
       const token = await user.getIdToken()
       await axios.post(
         '/api/cart',
-        {
-          productId: product.id,
-          quantity,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { productId: product.id, quantity },
+        { headers: { Authorization: `Bearer ${token}` } }
       )
-
       toast.success('Berhasil ditambahkan ke keranjang')
       router.push('/cart')
     } catch {
@@ -82,16 +74,19 @@ export default function ProductDetailPage() {
 
   return (
     <div className="max-w-md mx-auto py-8 space-y-6">
-      {product.image && (
+      {product.imageUrl ? (
         <img
-          src={`/uploads/${product.image}`}
+          src={product.imageUrl}            // ✅ langsung URL Supabase
           alt={product.name}
           className="w-full h-56 object-cover rounded-lg"
+          loading="lazy"
         />
+      ) : (
+        <div className="w-full h-56 rounded-lg bg-muted" />
       )}
 
       <h1 className="text-2xl font-bold">{product.name}</h1>
-      <p className="text-gray-700">Rp {product.price.toLocaleString()}</p>
+      <p className="text-gray-700">Rp {product.price.toLocaleString('id-ID')}</p>
       <p className="text-gray-600">
         {product.stock > 0 ? `Stok: ${product.stock}` : 'Habis'}
       </p>
@@ -107,17 +102,13 @@ export default function ProductDetailPage() {
           onChange={(e) => {
             const val = Number(e.target.value)
             const safe = Number.isFinite(val) ? val : 1
-            setQuantity(Math.min(Math.max(safe, 1), product.stock))
+            setQuantity(Math.min(Math.max(safe, 1), Math.max(product.stock, 1)))
           }}
           className="w-20"
         />
       </div>
 
-      <Button
-        onClick={addToCart}
-        disabled={product.stock === 0}
-        className="w-full"
-      >
+      <Button onClick={addToCart} disabled={product.stock === 0} className="w-full">
         Masukkan ke Keranjang
       </Button>
 

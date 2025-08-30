@@ -1,15 +1,13 @@
 // src/app/api/products/[id]/route.ts
-
 import { NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
-import fs from 'fs'
-import path from 'path'
 
+export const runtime = 'nodejs' // Prisma tidak jalan di Edge
 const prisma = new PrismaClient()
 
 // GET /api/products/:id
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
@@ -20,10 +18,7 @@ export async function GET(
   })
 
   if (!product || product.isActive === false) {
-    return NextResponse.json(
-      { error: 'Produk tidak ditemukan' },
-      { status: 404 }
-    )
+    return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
   }
 
   return NextResponse.json(product)
@@ -35,81 +30,51 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const {
-    name,
-    price,
-    stock,
-    image,
-    detail,
-    categoryId,
-    weight,
-    size,
-  } = await req.json()
+  const { name, price, stock, imageUrl, detail, categoryId, weight, size } = await req.json()
 
-  if (!name || !price || !stock) {
+  if (!name || price == null || stock == null) {
     return NextResponse.json(
-      { error: 'Data tidak lengkap (nama, harga, atau stok kosong)' },
+      { error: 'Data tidak lengkap (nama, harga, stok wajib diisi)' },
       { status: 400 }
     )
   }
 
   const existing = await prisma.product.findUnique({ where: { id } })
   if (!existing || existing.isActive === false) {
-    return NextResponse.json(
-      { error: 'Produk tidak ditemukan' },
-      { status: 404 }
-    )
-  }
-
-  // Hapus file gambar lama jika ganti image
-  if (image && image !== existing.image && existing.image) {
-    const oldPath = path.join(process.cwd(), 'public', 'uploads', existing.image)
-    if (fs.existsSync(oldPath)) {
-      await fs.promises.unlink(oldPath)
-    }
+    return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
   }
 
   const updated = await prisma.product.update({
     where: { id },
     data: {
-      name,
-      price: parseInt(price, 10),
-      stock: parseInt(stock, 10),
-      image,
-      detail: detail ?? undefined,
-      categoryId,
-      weight: weight != null ? parseInt(weight, 10) : undefined,
-      size: size ?? undefined,
+      name: String(name),
+      price: Number(price),
+      stock: Number(stock),
+      // pakai imageUrl baru kalau ada; kalau tidak, pertahankan yang lama
+      imageUrl: imageUrl ?? existing.imageUrl,
+      detail: detail ?? existing.detail,
+      categoryId: categoryId ?? existing.categoryId,
+      weight: weight != null ? Number(weight) : existing.weight,
+      size: size ?? existing.size,
     },
+    include: { category: true },
   })
 
   return NextResponse.json(updated)
 }
 
-// DELETE /api/products/:id
+// DELETE /api/products/:id (soft delete)
 export async function DELETE(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
 
   const existing = await prisma.product.findUnique({ where: { id } })
   if (!existing || existing.isActive === false) {
-    return NextResponse.json(
-      { error: 'Produk tidak ditemukan' },
-      { status: 404 }
-    )
+    return NextResponse.json({ error: 'Produk tidak ditemukan' }, { status: 404 })
   }
 
-  // (opsional) hapus file gambar lama
-  if (existing.image) {
-    const imgPath = path.join(process.cwd(), 'public', 'uploads', existing.image)
-    if (fs.existsSync(imgPath)) {
-      await fs.promises.unlink(imgPath)
-    }
-  }
-
-  // Soft-delete: set isActive = false
   await prisma.product.update({
     where: { id },
     data: { isActive: false },

@@ -15,7 +15,7 @@ type Product = {
   name: string
   price: number
   stock: number
-  image?: string
+  imageUrl?: string   // ✅ ganti ke imageUrl
 }
 
 export default function NewTransactionPage() {
@@ -99,11 +99,12 @@ export default function NewTransactionPage() {
                 className="group relative cursor-pointer overflow-hidden transition hover:shadow-lg"
               >
                 <div className="relative">
-                  {p.image ? (
+                  {p.imageUrl ? (
                     <img
-                      src={`/uploads/${p.image}`}
+                      src={p.imageUrl}      // ✅ langsung pakai URL Supabase
                       alt={p.name}
                       className="aspect-[4/3] w-full object-cover transition group-hover:scale-[1.02]"
+                      loading="lazy"
                     />
                   ) : (
                     <div className="aspect-[4/3] w-full bg-muted" />

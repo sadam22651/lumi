@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 
+export const runtime = 'nodejs' // ✅ supaya Prisma tidak jalan di Edge
 const prisma = new PrismaClient()
 
 // POST /api/products
@@ -9,7 +10,7 @@ export async function POST(req: Request) {
   const {
     name,
     price,
-    image,
+    imageUrl,   // ✅ pakai imageUrl
     detail,
     categoryId,
     stock,
@@ -31,9 +32,12 @@ export async function POST(req: Request) {
       stock: parseInt(stock, 10),
       weight: weight ? parseInt(weight, 10) : undefined,
       size: size?.trim() || undefined,
-      image,
+      imageUrl, // ✅ simpan ke kolom imageUrl
       detail: detail?.trim() || undefined,
       categoryId,
+    },
+    include: {
+      category: true,
     },
   })
 
