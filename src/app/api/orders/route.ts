@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       select: {
         id: true, totalAmount: true, status: true, createdAt: true,
         shippedAt: true, deliveredAt: true,
-        items: { select: { quantity: true, price: true, product: { select: { name: true, image: true } } } },
+        items: { select: { quantity: true, price: true, product: { select: { name: true, imageUrl: true } } } },
       },
     })
     return NextResponse.json({ orders })

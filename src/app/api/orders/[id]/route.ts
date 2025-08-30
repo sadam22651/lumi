@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, { params }: RouteParamsAsync) {
         select: {
           quantity: true,
           price: true,
-          product: { select: { id: true, name: true, image: true } },
+          product: { select: { id: true, name: true, imageUrl: true } },
         },
       },
     },
