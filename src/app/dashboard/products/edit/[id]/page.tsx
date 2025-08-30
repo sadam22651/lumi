@@ -1,3 +1,4 @@
+// src/app/dashboard/products/[id]/edit/page.tsx
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
@@ -8,22 +9,77 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import axios from 'axios'
 import { toast } from 'sonner'
+import { createClient } from '@supabase/supabase-js'
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+/* =========================
+ * Types & utils
+ * ========================= */
 type Category = { id: string; name: string }
+
+type Product = {
+  id: string
+  name: string
+  price: number
+  stock: number
+  weight: number | null
+  size: string | null
+  detail: string | null
+  imageUrl: string | null
+  categoryId: string | null
+}
+
+interface FormState {
+  name: string
+  price: string
+  stock: string
+  weight: string
+  size: string
+  detail: string
+  imageUrl: string // simpan URL publik dari Supabase
+  categoryId: string
+}
+
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (typeof e === 'object' && e && 'message' in e) {
+    const m = (e as { message?: unknown }).message
+    if (typeof m === 'string') return m
+  }
+  return 'Terjadi kesalahan'
+}
+
+async function uploadToSupabase(file: File): Promise<string> {
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const path = `products/${crypto.randomUUID()}.${ext}`
+
+  const { error } = await supabase.storage.from('products').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+  })
+  if (error) throw new Error(error.message)
+
+  // bucket "products" publik → URL file
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/products/${path}`
+}
 
 export default function EditProductPage() {
   const router = useRouter()
-  const params = useParams()
-  const id = params.id as string
+  const params = useParams<{ id: string }>()
+  const id = params.id
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
     name: '',
     price: '',
     stock: '',
     weight: '',
     size: '',
     detail: '',
-    image: '',
+    imageUrl: '',
     categoryId: '',
   })
 
@@ -33,25 +89,25 @@ export default function EditProductPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    const fetchData = async () => {
+    async function fetchData() {
       try {
         const [productRes, categoryRes] = await Promise.all([
-          axios.get(`/api/dashboard/products/${id}`),
-          axios.get('/api/categories'),
+          axios.get<Product>(`/api/dashboard/products/${id}`),
+          axios.get<Category[]>('/api/categories'),
         ])
         const product = productRes.data
         setForm({
           name: product.name ?? '',
-          price: (product.price ?? '').toString(),
-          stock: (product.stock ?? '').toString(),
-          weight: product.weight?.toString() ?? '',
+          price: String(product.price ?? ''),
+          stock: String(product.stock ?? ''),
+          weight: product.weight != null ? String(product.weight) : '',
           size: product.size ?? '',
           detail: product.detail ?? '',
-          image: product.image ?? '',
+          imageUrl: product.imageUrl ?? '',
           categoryId: product.categoryId ?? '',
         })
         setCategories(categoryRes.data)
-      } catch (error) {
+      } catch (error: unknown) {
         console.error(error)
         toast.error('Gagal memuat data produk')
       }
@@ -66,10 +122,12 @@ export default function EditProductPage() {
     }
   }, [previewUrl])
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
+  type ChangeTarget = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+  type FormField = keyof FormState
+
+  const handleChange = (e: React.ChangeEvent<ChangeTarget>) => {
+    const { name, value } = e.target as { name: FormField; value: string }
+    setForm((f) => ({ ...f, [name]: value }))
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -93,45 +151,40 @@ export default function EditProductPage() {
     })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setSaving(true)
 
     try {
-      let filename = form.image
+      let imageUrl = form.imageUrl
 
+      // Jika user upload file baru → upload ke Supabase lalu pakai URL baru
       if (file) {
-        const formData = new FormData()
-        formData.append('file', file)
-        const uploadRes = await axios.post('/api/upload', formData)
-        filename = uploadRes.data.filename
+        imageUrl = await uploadToSupabase(file)
       }
 
-      await axios.patch(`/api/products/${id}`, {
-        name: form.name,
-        price: form.price,
-        stock: form.stock,
-        weight: form.weight,
-        size: form.size,
-        detail: form.detail,
-        categoryId: form.categoryId,
-        image: filename,
+      await axios.patch(`/api/dashboard/products/${id}`, {
+        name: form.name.trim(),
+        price: Number(form.price || 0),
+        stock: Number(form.stock || 0),
+        weight: form.weight ? Number(form.weight) : null,
+        size: form.size?.trim() || null,
+        detail: form.detail?.trim() || 'detail belum ditambahkan',
+        categoryId: form.categoryId || null,
+        imageUrl, // gunakan field imageUrl (bukan filename lokal)
       })
 
       toast.success('Produk berhasil diperbarui')
       router.push('/dashboard/products')
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(error)
-      toast.error('Gagal memperbarui produk')
+      toast.error(getErrorMessage(error))
     } finally {
       setSaving(false)
     }
   }
 
-  const currentImgSrc = useMemo(
-    () => (form.image ? `/uploads/${form.image}` : ''),
-    [form.image]
-  )
+  const currentImgSrc = useMemo(() => form.imageUrl || '', [form.imageUrl])
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -166,7 +219,7 @@ export default function EditProductPage() {
                   id="stock"
                   name="stock"
                   type="number"
-                  min="1"
+                  min="0"
                   value={form.stock}
                   onChange={handleChange}
                 />
@@ -177,7 +230,7 @@ export default function EditProductPage() {
                   id="weight"
                   name="weight"
                   type="number"
-                  min="1"
+                  min="0"
                   value={form.weight}
                   onChange={handleChange}
                 />
@@ -255,7 +308,12 @@ export default function EditProductPage() {
 
             <div className="space-y-2">
               <Label htmlFor="image">Ubah Gambar</Label>
-              <Input id="image" type="file" accept="image/*" onChange={handleFileChange} />
+              <Input
+                id="image"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileChange}
+              />
               <p className="text-xs text-muted-foreground">
                 Format: JPG, PNG, WEBP. Maks 2MB.
               </p>

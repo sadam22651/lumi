@@ -4,10 +4,33 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
-// POST /api/products
+/** Util: pastikan aman ambil pesan error */
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : 'Server error'
+}
+
+/** Util: konversi ke number dengan default (tanpa NaN) */
+function toNumber(value: unknown, fallback: number): number {
+  const n = typeof value === 'string' ? Number(value) : Number(value as number)
+  return Number.isFinite(n) ? n : fallback
+}
+
+/** =========================
+ *  POST /api/products
+ *  ========================= */
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+    const body = (await req.json()) as {
+      name?: string
+      price?: number | string
+      stock?: number | string
+      categoryId?: string | null
+      detail?: string | null
+      weight?: number | string | null
+      size?: string | null
+      imageUrl?: string | null
+    }
+
     const {
       name,
       price,
@@ -16,7 +39,7 @@ export async function POST(req: Request) {
       detail,
       weight,
       size,
-      imageUrl, // ✅ URL dari Supabase Storage
+      imageUrl,
     } = body || {}
 
     if (!name || price == null || stock == null) {
@@ -29,24 +52,26 @@ export async function POST(req: Request) {
     const product = await prisma.product.create({
       data: {
         name: String(name).trim(),
-        price: Number(price),
-        stock: Number(stock),
+        price: toNumber(price, 0),
+        stock: toNumber(stock, 0),
         categoryId: categoryId || null,
         detail: (detail?.trim() || 'detail belum ditambahkan'),
-        weight: weight != null ? Number(weight) : 100,
+        weight: weight != null ? toNumber(weight, 100) : 100,
         size: size ? String(size).trim() : null,
-        imageUrl: imageUrl || null, // ✅ simpan URL
+        imageUrl: imageUrl || null,
         isActive: true,
       },
     })
 
     return NextResponse.json(product, { status: 201 })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Server error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 })
   }
 }
 
-// GET /api/products
+/** =========================
+ *  GET /api/products
+ *  ========================= */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
@@ -66,7 +91,7 @@ export async function GET(req: Request) {
     })
 
     return NextResponse.json(products)
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Server error' }, { status: 500 })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 })
   }
 }

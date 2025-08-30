@@ -1,3 +1,4 @@
+// src/app/dashboard/products/new/page.tsx
 'use client'
 
 import { Input } from '@/components/ui/input'
@@ -14,10 +15,34 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+/* =========================
+ * Types & utils
+ * ========================= */
+type Category = { id: string; name: string }
+
+interface FormState {
+  name: string
+  price: string
+  categoryId: string
+  stock: string
+  detail: string
+  weight: string
+  size: string
+}
+
+function getErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (typeof e === 'object' && e && 'message' in e) {
+    const m = (e as { message?: unknown }).message
+    if (typeof m === 'string') return m
+  }
+  return 'Gagal menambahkan produk'
+}
+
 export default function AddProductPage() {
   const router = useRouter()
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormState>({
     name: '',
     price: '',
     categoryId: '',
@@ -28,15 +53,15 @@ export default function AddProductPage() {
   })
 
   const [file, setFile] = useState<File | null>(null)
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     async function fetchCategories() {
       try {
-        const res = await axios.get('/api/categories')
+        const res = await axios.get<Category[]>('/api/categories')
         setCategories(res.data)
-      } catch (error) {
+      } catch (error: unknown) {
         console.error(error)
         toast.error('Gagal mengambil kategori')
       }
@@ -44,10 +69,12 @@ export default function AddProductPage() {
     fetchCategories()
   }, [])
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
-  ) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
+  type ChangeTarget = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+  type FormField = keyof FormState
+
+  const handleChange = (e: React.ChangeEvent<ChangeTarget>) => {
+    const { name, value } = e.target as { name: FormField; value: string }
+    setForm((prev) => ({ ...prev, [name]: value }))
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,7 +106,7 @@ export default function AddProductPage() {
     return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/products/${path}`
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
 
@@ -88,23 +115,23 @@ export default function AddProductPage() {
       let imageUrl: string | null = null
       if (file) imageUrl = await uploadToSupabase(file)
 
-      // 2) kirim data produk ke API kamu
+      // 2) kirim data produk ke API
       await axios.post('/api/dashboard/products', {
         name: form.name.trim(),
         price: Number(form.price || 0),
         stock: Number(form.stock || 0),
-        weight: Number(form.weight || 0),
+        weight: form.weight ? Number(form.weight) : 0,
         size: form.size?.trim() || null,
         categoryId: form.categoryId || null,
         detail: form.detail?.trim() || 'detail belum ditambahkan',
-        imageUrl, // ← URL dari Supabase Storage
+        imageUrl,
       })
 
       toast.success('Produk berhasil ditambahkan')
       router.push('/dashboard/products')
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error)
-      toast.error(error?.message || 'Gagal menambahkan produk')
+      toast.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -122,22 +149,51 @@ export default function AddProductPage() {
 
         <div>
           <Label htmlFor="price">Harga Produk</Label>
-          <Input id="price" name="price" type="number" min="0" value={form.price} onChange={handleChange} required />
+          <Input
+            id="price"
+            name="price"
+            type="number"
+            min="0"
+            value={form.price}
+            onChange={handleChange}
+            required
+          />
         </div>
 
         <div>
           <Label htmlFor="stock">Stok</Label>
-          <Input id="stock" name="stock" type="number" min="0" value={form.stock} onChange={handleChange} required />
+          <Input
+            id="stock"
+            name="stock"
+            type="number"
+            min="0"
+            value={form.stock}
+            onChange={handleChange}
+            required
+          />
         </div>
 
         <div>
           <Label htmlFor="weight">Berat Produk (gram)</Label>
-          <Input id="weight" name="weight" type="number" min="0" value={form.weight} onChange={handleChange} />
+          <Input
+            id="weight"
+            name="weight"
+            type="number"
+            min="0"
+            value={form.weight}
+            onChange={handleChange}
+          />
         </div>
 
         <div>
           <Label htmlFor="size">Ukuran Produk</Label>
-          <Input id="size" name="size" placeholder="Contoh: 6, 7, M, L, 45cm" value={form.size} onChange={handleChange} />
+          <Input
+            id="size"
+            name="size"
+            placeholder="Contoh: 6, 7, M, L, 45cm"
+            value={form.size}
+            onChange={handleChange}
+          />
         </div>
 
         <div>
@@ -154,8 +210,15 @@ export default function AddProductPage() {
 
         <div>
           <Label htmlFor="image">Gambar Produk</Label>
-          <Input id="image" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} />
-          <p className="text-xs text-muted-foreground mt-1">Maks 2MB. Format: JPG/PNG/WEBP.</p>
+          <Input
+            id="image"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFileChange}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Maks 2MB. Format: JPG/PNG/WEBP.
+          </p>
         </div>
 
         <div>
