@@ -3,11 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
+/* =========================
+   ENUMS
+   ========================= */
 enum OrderStatus {
   PENDING
   REVIEW
@@ -18,6 +21,9 @@ enum OrderStatus {
   CANCELLED
 }
 
+/* =========================
+   CORE MODELS
+   ========================= */
 model User {
   id             String          @id @default(cuid())
   firebaseUid    String          @unique
@@ -33,11 +39,17 @@ model User {
   updatedAt      DateTime        @updatedAt
 }
 
+model Category {
+  id       String    @id @default(cuid())
+  name     String
+  products Product[]
+}
+
 model Product {
   id               String             @id @default(cuid())
   name             String
   price            Int
-  image            String?
+  imageUrl         String?            // ← URL gambar dari Supabase Storage
   detail           String             @default("detail belum ditambahkan")
   size             String?
   weight           Int                @default(100)
@@ -49,23 +61,8 @@ model Product {
   transactionItems TransactionItem[]
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
-}
 
-model Category {
-  id       String    @id @default(cuid())
-  name     String
-  products Product[]
-}
-
-model CartItem {
-  id        String   @id @default(cuid())
-  userId    String
-  productId String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id])
-  quantity  Int      @default(1)
-  createdAt DateTime @default(now())
-  @@unique([userId, productId])
+  @@index([categoryId])
 }
 
 model Cart {
@@ -78,6 +75,20 @@ model Cart {
   etd          String?
   isCod        Boolean  @default(false)
   updatedAt    DateTime @updatedAt
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
 }
 
 model Transaction {
@@ -102,8 +113,10 @@ model Transaction {
   totalAmount     Int
   status          String           @default("paid")
   createdAt       DateTime         @default(now())
+
   @@index([createdAt])
   @@index([status])
+  @@index([userId])
 }
 
 model TransactionItem {
@@ -114,8 +127,14 @@ model TransactionItem {
   product       Product      @relation(fields: [productId], references: [id])
   quantity      Int          @default(1)
   price         Int
+
+  @@index([transactionId])
+  @@index([productId])
 }
 
+/* =========================
+   CUSTOM ORDERS + IMAGES
+   ========================= */
 model RingOrder {
   id           String       @id @default(cuid())
   userId       String?
@@ -131,8 +150,10 @@ model RingOrder {
   images       OrderImage[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+
   @@index([createdAt])
   @@index([status])
+  @@index([userId])
 }
 
 model NecklaceOrder {
@@ -151,8 +172,10 @@ model NecklaceOrder {
   images       OrderImage[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+
   @@index([createdAt])
   @@index([status])
+  @@index([userId])
 }
 
 model OrderImage {
@@ -165,6 +188,7 @@ model OrderImage {
   necklaceOrderId String?
   necklaceOrder   NecklaceOrder? @relation(fields: [necklaceOrderId], references: [id], onDelete: Cascade)
   createdAt       DateTime       @default(now())
+
   @@index([ringOrderId])
   @@index([necklaceOrderId])
 }
