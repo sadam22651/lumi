@@ -100,7 +100,7 @@ export default function Dashboard() {
           title="Laporan Transaksi"
           desc="Ringkasan penjualan & filter periode"
           icon={FileTextIcon}
-          onClick={() => go('/dashboard/transactions')}
+          onClick={() => go('/dashboard/report')}
         />
         <Tile
           title="Order"
