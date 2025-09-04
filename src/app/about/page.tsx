@@ -72,7 +72,7 @@ export default function AboutPage() {
           Lihat Katalog
         </Link>
         <span className="text-sm text-black/60">
-          Alamat workshop: <em>opsional, isi di sini</em>
+          Alamat workshop: <em>Jl. Arisun, Nunang, Kec. Payakumbuh Bar., Kota Payakumbuh, Sumatera Barat 26218</em>
         </span>
       </section>
     </main>
